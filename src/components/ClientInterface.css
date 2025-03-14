@@ -1,0 +1,199 @@
+/* Main container styles */
+.container {
+    max-width: 32rem;
+    margin: 2.5rem auto 0;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+  }
+  
+  /* Typography */
+  .page-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 1.5rem;
+  }
+  
+  .section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+  
+  .form-label {
+    display: block;
+    color: #4B5563;
+    margin-bottom: 0.5rem;
+  }
+  
+  .date-heading {
+    font-weight: 500;
+    color: #4B5563;
+    margin-bottom: 0.5rem;
+  }
+  
+  .no-slots-message {
+    color: #6B7280;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Form elements */
+  .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .form-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #D1D5DB;
+    border-radius: 0.25rem;
+  }
+  
+  /* Buttons */
+  .time-slot-button {
+    padding: 0.5rem;
+    border: 1px solid #D1D5DB;
+    border-radius: 0.25rem;
+    background-color: white;
+    cursor: pointer;
+    text-align: center;
+  }
+  
+  .time-slot-button:hover {
+    background-color: #F3F4F6;
+  }
+  
+  .change-selection-button {
+    color: #3B82F6;
+    background: none;
+    border: none;
+    font-size: 0.875rem;
+    cursor: pointer;
+    margin-top: 0.25rem;
+  }
+  
+  .submit-button {
+    background-color: #10B981;
+    color: white;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.25rem;
+    width: 100%;
+    cursor: pointer;
+  }
+  
+  .submit-button:hover {
+    background-color: #059669;
+  }
+  
+  .submit-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  /* Layout utilities */
+  .slots-container {
+    margin-bottom: 1.5rem;
+  }
+  
+  .date-group {
+    margin-bottom: 1rem;
+  }
+  
+  .time-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+  
+  .selected-slot-info {
+    background-color: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .slot-details {
+    font-weight: 500;
+  }
+  
+  /* Status messages */
+  .error-message {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background-color: #FEE2E2;
+    color: #B91C1C;
+    border-radius: 0.25rem;
+  }
+  
+  /* Loading state */
+  .loading-container {
+    text-align: center;
+  }
+  
+  .loading-wrapper {
+    padding: 2.5rem 0;
+  }
+  
+  .spinner {
+    height: 3rem;
+  }
+  /* Loading state */
+.loading-container {
+    text-align: center;
+  }
+  
+  .loading-wrapper {
+    padding: 2.5rem 0;
+  }
+  
+  .spinner {
+    height: 3rem;
+    width: 3rem;
+    border-radius: 50%;
+    border: 2px solid #E5E7EB;
+    border-bottom-color: #3B82F6;
+    margin: 0 auto;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .loading-text {
+    margin-top: 1rem;
+  }
+  
+  /* Confirmation screen */
+  .confirmation-message {
+    text-align: center;
+    padding: 2rem 0;
+  }
+  
+  .success-icon {
+    color: #10B981;
+    margin-bottom: 1rem;
+  }
+  
+  .check-icon {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto;
+  }
+  
+  .confirmation-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+  }
+  
+  .confirmation-details {
+    margin-bottom: 1.5rem;
+  }
+  
+  .confirmation-email {
+    color: #6B7280;
+  }
