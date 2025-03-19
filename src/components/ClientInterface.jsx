@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import emailjs from '@emailjs/browser';
-import './ClientInterface.css'; // Add this import for the CSS
+import './ClientInterface.css';
 
 function ClientInterface() {
   const { sheetId } = useParams();
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [userInfo, setUserInfo] = useState({ firstName: '', lastName: '', email: '' });
+  const [userInfo, setUserInfo] = useState({ firstName: '', lastName: '', email: '', isScholarship: false });
   const [bookingComplete, setBookingComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(null);
+  
+  // Replace with your actual Google Apps Script Web App URL
+  const googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxDd7vlYTXfnRCwdEziEF8zMwDdF5EshTcRMii_Lnv-hWH1AFqCLqU_5qgPFlHsNkNR5g/exec';
 
   // Load available slots on component mount and set up periodic refresh
   useEffect(() => {
@@ -20,7 +22,7 @@ function ClientInterface() {
       
       // Set up a refresh interval to check for updates every 30 seconds
       const interval = setInterval(() => {
-        fetchAvailableSlots(false); // Pass false to avoid showing loading indicator on refresh
+        fetchAvailableSlots(false);
       }, 30000);
       
       setRefreshInterval(interval);
@@ -36,6 +38,23 @@ function ClientInterface() {
       setErrorMessage('No sheet ID provided. Please use the correct booking link.');
     }
   }, [sheetId]);
+
+  // Convert date to day of week
+  const getDayOfWeek = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
+  // Get the full date with day of week
+  const getFormattedDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+  };
 
   // Fetch available slots from SheetDB
   const fetchAvailableSlots = async (showLoading = true) => {
@@ -77,6 +96,78 @@ function ClientInterface() {
     setSelectedSlot(slot);
   };
 
+  // Send emails using Google Apps Script
+  const sendEmails = async () => {
+    const fullName = `${userInfo.firstName} ${userInfo.lastName}`;
+    const dayOfWeek = getDayOfWeek(selectedSlot.date);
+    const formattedDate = getFormattedDate(selectedSlot.date);
+    
+    // Convert time from 24-hour to 12-hour format
+    const formatTimeToStandard = (time) => {
+      // Check if time is already in standard format or needs conversion
+      if (time.includes('AM') || time.includes('PM')) {
+        return time;
+      }
+      
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours, 10);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const standardHour = hour % 12 || 12; // Convert 0 to 12
+      return `${standardHour}:${minutes} ${ampm}`;
+    };
+    
+    const standardTime = formatTimeToStandard(selectedSlot.time);
+    const date = new Date(selectedSlot.date);
+    const monthName = date.toLocaleDateString('en-US', { month: 'long' });
+    const day = date.getDate();
+    
+    try {
+      console.log("Sending owner email...");
+      // 1. Send email to the owner
+      await fetch(googleScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Important for CORS issues
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'owner',
+          slot_date: formattedDate,
+          slot_time: standardTime,
+          client_name: fullName,
+          client_email: userInfo.email
+        }),
+      });
+      
+      console.log("Owner email sent");
+      
+      // 2. Always send scholarship email to the client
+      console.log("Sending scholarship email...");
+      await fetch(googleScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'scholarship',
+          first_name: userInfo.firstName,
+          to_email: userInfo.email,
+          day_of_week: dayOfWeek,
+          month: monthName,
+          day: day,
+          time: standardTime
+        }),
+      });
+      console.log("Scholarship email sent successfully");
+      
+      return true;
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      // We'll consider the booking successful even if emails fail
+      return true;
+    }
+  };
   // Handle booking form submission
   const handleBooking = async (e) => {
     e.preventDefault();
@@ -94,6 +185,7 @@ function ClientInterface() {
             status: 'Booked',
             client_name: `${userInfo.firstName} ${userInfo.lastName}`,
             client_email: userInfo.email,
+            zoom_option: userInfo.isScholarship ? 'Yes' : 'No',
             booking_date: new Date().toISOString().split('T')[0]
           }
         })
@@ -103,7 +195,7 @@ function ClientInterface() {
         throw new Error('Failed to book appointment');
       }
 
-      // 2. Send notification emails using EmailJS
+      // 2. Send notification emails
       await sendEmails();
       
       // Clear refresh interval when booking is complete
@@ -113,44 +205,9 @@ function ClientInterface() {
       
       setBookingComplete(true);
     } catch (error) {
-        setErrorMessage('Error booking appointment: ' + error.message);
+      setErrorMessage('Error booking appointment: ' + error.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Send notification emails using EmailJS
-  const sendEmails = async () => {
-    try {
-      // 1. Send email to the owner
-      await emailjs.send(
-        'service_qy1a7to',
-        'template_rigyyhj',
-        {
-          slot_date: selectedSlot.date,
-          slot_time: selectedSlot.time,
-          client_name: `${userInfo.firstName} ${userInfo.lastName}`,
-          client_email: userInfo.email,
-          to_email:'kevincordero11.KC@gmail.com'
-        },
-        'n0fNHhb_WeOrB2Zw1'
-      );
-      
-      // 2. Send confirmation email to the client
-      await emailjs.send(
-        'service_qy1a7to',
-        'template_uj3y5pd',
-        {
-          slot_date: selectedSlot.date,
-          slot_time: selectedSlot.time,
-          client_name: userInfo.firstName,
-          to_email: userInfo.email,
-        },
-        'n0fNHhb_WeOrB2Zw1'
-      );
-    } catch (error) {
-      console.error('Email sending failed:', error);
-      // We still consider the booking successful even if emails fail
     }
   };
 
@@ -188,105 +245,149 @@ function ClientInterface() {
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
           </div>
-          <h2 className="confirmation-title">Booking Confirmed!</h2>
-          <p className="confirmation-details">Thank you, {userInfo.firstName}. You're scheduled for {selectedSlot.date} at {selectedSlot.time}.</p>
-          <p className="confirmation-email">A confirmation email has been sent to {userInfo.email}.</p>
+          <h2>Booking Confirmed!</h2>
+          <p>Thank you, {userInfo.firstName}!</p>
+          <p>Your appointment has been scheduled for:</p>
+          <div className="appointment-details">
+            <p>
+              <strong>{getDayOfWeek(selectedSlot.date)}</strong>, {new Date(selectedSlot.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
+            <p><strong>Time:</strong> {selectedSlot.time}</p>
+          </div>
+          <p>A confirmation email has been sent to {userInfo.email}.</p>
+          <p>Please check your inbox (and spam folder) for all the details.</p>
+          {userInfo.isScholarship && (
+            <div className="scholarship-note">
+              <p><strong>Note:</strong> As a scholarship applicant, you've received specific instructions for your interview at Sitzmann Hall.</p>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // Regular booking interface
+  // Error message display
+  if (errorMessage) {
+    return (
+      <div className="container error-container">
+        <div className="error-message">
+          <h2>Error</h2>
+          <p>{errorMessage}</p>
+          <button onClick={() => window.location.reload()}>Refresh Page</button>
+        </div>
+      </div>
+    );
+  }
+
+  // No available slots message
+  if (availableSlots.length === 0) {
+    return (
+      <div className="container no-slots-container">
+        <div className="no-slots-message">
+          <h2>No Available Appointments</h2>
+          <p>Sorry, there are currently no available appointment slots.</p>
+          <p>Please check back later or contact us directly to schedule.</p>
+          <button onClick={() => fetchAvailableSlots()}>Refresh</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main booking interface
   return (
     <div className="container">
-      <h1 className="page-title">Book Your Appointment</h1>
-      
-      {errorMessage && (
-        <div className="error-message">
-          {errorMessage}
-        </div>
-      )}
+      <div class="banner">
+          <img src="/CatholicStudiesPurple.png" alt="Guadalupe's Scholar Logo"/>
+      </div>
+      <h1 className="page-title">Guadalupe's Scholars Interview</h1>
       
       {!selectedSlot ? (
-        <div>
-          <h2 className="section-title">Available Time Slots</h2>
-          {availableSlots.length > 0 ? (
-            <div className="slots-container">
-              {Object.entries(groupSlotsByDate()).map(([date, slots]) => (
-                <div key={date} className="date-group">
-                  <h3 className="date-heading">
-                    {new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  </h3>
-                  <div className="time-slots-grid">
-                    {slots.map(slot => (
-                      <button
-                        key={slot.id}
-                        className="time-slot-button"
-                        onClick={() => handleSelectSlot(slot)}
-                      >
-                        {slot.time}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+        <div className="slots-container">
+          <p className="instructions">Select an available date and time below:</p>
+          
+          {Object.entries(groupSlotsByDate()).map(([date, slots]) => (
+            <div key={date} className="date-group">
+              <h2 className="date-header">
+                <strong>{getDayOfWeek(date)}</strong>, {new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              </h2>
+              <div className="time-slots">
+                {slots.map(slot => (
+                  <button
+                    key={slot.id}
+                    className="time-slot"
+                    onClick={() => handleSelectSlot(slot)}
+                  >
+                    {slot.time}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            <p className="no-slots-message">No available time slots at the moment. Please check back later.</p>
-          )}
+          ))}
         </div>
       ) : (
-        <div>
+        <div className="booking-form-container">
           <div className="selected-slot-info">
-            <p className="slot-details">Selected Time: {selectedSlot.date} at {selectedSlot.time}</p>
+            <h3>Selected Appointment:</h3>
+            <p>
+              <strong>{getDayOfWeek(selectedSlot.date)}</strong>, {new Date(selectedSlot.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
+            <p><strong>Time:</strong> {selectedSlot.time}</p>
             <button 
-              onClick={() => setSelectedSlot(null)} 
-              className="change-selection-button"
+              className="change-slot-btn"
+              onClick={() => setSelectedSlot(null)}
             >
-              Change selection
+              Change Selection
             </button>
           </div>
           
-          <form onSubmit={handleBooking}>
+          <form className="booking-form" onSubmit={handleBooking}>
+            <h3>Please Complete Your Booking</h3>
+            
             <div className="form-group">
-              <label className="form-label">First Name</label>
-              <input 
-                type="text" 
-                className="form-input"
+              <label htmlFor="firstName">First Name</label>
+              <input
+                type="text"
+                id="firstName"
+                required
                 value={userInfo.firstName}
                 onChange={(e) => setUserInfo({...userInfo, firstName: e.target.value})}
-                required
               />
             </div>
             
             <div className="form-group">
-              <label className="form-label">Last Name</label>
-              <input 
-                type="text" 
-                className="form-input"
+              <label htmlFor="lastName">Last Name</label>
+              <input
+                type="text"
+                id="lastName"
+                required
                 value={userInfo.lastName}
                 onChange={(e) => setUserInfo({...userInfo, lastName: e.target.value})}
-                required
               />
             </div>
             
             <div className="form-group">
-              <label className="form-label">Email</label>
-              <input 
-                type="email" 
-                className="form-input"
+              <label htmlFor="email">Email Address</label>
+              <input
+                type="email"
+                id="email"
+                required
                 value={userInfo.email}
                 onChange={(e) => setUserInfo({...userInfo, email: e.target.value})}
-                required
               />
             </div>
             
-            <button 
-              type="submit"
-              className="submit-button"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Processing...' : 'Confirm Booking'}
+            <div className="form-group checkbox-group">
+              <input
+                type="checkbox"
+                id="isScholarship"
+                checked={userInfo.isScholarship}
+                onChange={(e) => setUserInfo({...userInfo, isScholarship: e.target.checked})}
+              />
+              <label htmlFor="isScholarship">If you zoom option</label>
+            </div>
+            
+            <button type="submit" className="book-btn">
+              Confirm Booking
             </button>
           </form>
         </div>
