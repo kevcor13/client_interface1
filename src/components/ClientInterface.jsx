@@ -1,87 +1,59 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
 import './ClientInterface.css';
 
 function ClientInterface() {
-  const { sheetId } = useParams();
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [userInfo, setUserInfo] = useState({ firstName: '', lastName: '', email: '', isScholarship: false });
+  const [userInfo, setUserInfo] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    isScholarship: false,
+  });
   const [bookingComplete, setBookingComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(null);
-  
-  // Replace with your actual Google Apps Script Web App URL
-  const googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxDd7vlYTXfnRCwdEziEF8zMwDdF5EshTcRMii_Lnv-hWH1AFqCLqU_5qgPFlHsNkNR5g/exec';
 
-  // Load available slots on component mount and set up periodic refresh
-  useEffect(() => {
-    if (sheetId) {
-      fetchAvailableSlots();
-      
-      // Set up a refresh interval to check for updates every 30 seconds
-      const interval = setInterval(() => {
-        fetchAvailableSlots(false);
-      }, 30000);
-      
-      setRefreshInterval(interval);
-      
-      // Clean up interval on component unmount
-      return () => {
-        if (refreshInterval) {
-          clearInterval(refreshInterval);
-        }
-      };
-    } else {
-      setIsLoading(false);
-      setErrorMessage('No sheet ID provided. Please use the correct booking link.');
+  // Your backend base URL
+  const BACKEND_URL = 'https://9507-140-209-96-104.ngrok-free.app';
+
+  // Your Google Apps Script URL (if still sending emails from client)
+  const googleScriptUrl =
+    'https://script.google.com/macros/s/AKfycbxDd7vlYTXfnRCwdEziEF8zMwDdF5EshTcRMii_Lnv-hWH1AFqCLqU_5qgPFlHsNkNR5g/exec';
+
+  // Helper: convert 24-hour time to 12-hour AM/PM format
+  const formatTimeToStandard = (time) => {
+    if (!time) return '';
+    // If time already has AM/PM, just return it
+    if (time.toUpperCase().includes('AM') || time.toUpperCase().includes('PM')) {
+      return time;
     }
-  }, [sheetId]);
-
-  // Convert date to day of week
-  const getDayOfWeek = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { weekday: 'long' });
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const standardHour = hour % 12 || 12;
+    return `${standardHour}:${minutes} ${ampm}`;
   };
 
-  // Get the full date with day of week
-  const getFormattedDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
-
-  // Fetch available slots from SheetDB
+  // Fetch available slots from your backend
   const fetchAvailableSlots = async (showLoading = true) => {
     if (showLoading) {
       setIsLoading(true);
     }
-    
     try {
-      const response = await fetch(`https://sheetdb.io/api/v1/${sheetId}`);
+      const response = await fetch(`${BACKEND_URL}/api/slots`);
       if (!response.ok) {
         throw new Error('Failed to fetch available slots');
       }
       const data = await response.json();
-      // Filter to only show slots with status "Available"
-      const availableSlots = data.filter(slot => slot.status === 'Available');
-      
       // Sort slots by date and time
-      availableSlots.sort((a, b) => {
-        // First compare dates
+      data.sort((a, b) => {
         const dateComparison = new Date(a.date) - new Date(b.date);
         if (dateComparison !== 0) return dateComparison;
-        
-        // If dates are the same, compare times
         return a.time.localeCompare(b.time);
       });
-      
-      setAvailableSlots(availableSlots);
+      setAvailableSlots(data);
     } catch (error) {
       setErrorMessage('Error loading available slots: ' + error.message);
     } finally {
@@ -91,130 +63,26 @@ function ClientInterface() {
     }
   };
 
-  // Handle slot selection
-  const handleSelectSlot = (slot) => {
-    setSelectedSlot(slot);
-  };
+  // On mount, load slots and set up periodic refresh
+  useEffect(() => {
+    fetchAvailableSlots();
+    const interval = setInterval(() => {
+      fetchAvailableSlots(false);
+    }, 30000);
+    setRefreshInterval(interval);
 
-  // Send emails using Google Apps Script
-  const sendEmails = async () => {
-    const fullName = `${userInfo.firstName} ${userInfo.lastName}`;
-    const dayOfWeek = getDayOfWeek(selectedSlot.date);
-    const formattedDate = getFormattedDate(selectedSlot.date);
-    
-    // Convert time from 24-hour to 12-hour format
-    const formatTimeToStandard = (time) => {
-      // Check if time is already in standard format or needs conversion
-      if (time.includes('AM') || time.includes('PM')) {
-        return time;
-      }
-      
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours, 10);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const standardHour = hour % 12 || 12; // Convert 0 to 12
-      return `${standardHour}:${minutes} ${ampm}`;
-    };
-    
-    const standardTime = formatTimeToStandard(selectedSlot.time);
-    const date = new Date(selectedSlot.date);
-    const monthName = date.toLocaleDateString('en-US', { month: 'long' });
-    const day = date.getDate();
-    
-    try {
-      console.log("Sending owner email...");
-      // 1. Send email to the owner
-      await fetch(googleScriptUrl, {
-        method: 'POST',
-        mode: 'no-cors', // Important for CORS issues
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'owner',
-          slot_date: formattedDate,
-          slot_time: standardTime,
-          client_name: fullName,
-          client_email: userInfo.email
-        }),
-      });
-      
-      console.log("Owner email sent");
-      
-      // 2. Always send scholarship email to the client
-      console.log("Sending scholarship email...");
-      await fetch(googleScriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'scholarship',
-          first_name: userInfo.firstName,
-          to_email: userInfo.email,
-          day_of_week: dayOfWeek,
-          month: monthName,
-          day: day,
-          time: standardTime
-        }),
-      });
-      console.log("Scholarship email sent successfully");
-      
-      return true;
-    } catch (error) {
-      console.error('Email sending failed:', error);
-      // We'll consider the booking successful even if emails fail
-      return true;
-    }
-  };
-  // Handle booking form submission
-  const handleBooking = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      // 1. Update slot status in SheetDB
-      const response = await fetch(`https://sheetdb.io/api/v1/${sheetId}/id/${selectedSlot.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          data: {
-            status: 'Booked',
-            client_name: `${userInfo.firstName} ${userInfo.lastName}`,
-            client_email: userInfo.email,
-            zoom_option: userInfo.isScholarship ? 'Yes' : 'No',
-            booking_date: new Date().toISOString().split('T')[0]
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to book appointment');
-      }
-
-      // 2. Send notification emails
-      await sendEmails();
-      
-      // Clear refresh interval when booking is complete
+    // Cleanup on unmount
+    return () => {
       if (refreshInterval) {
         clearInterval(refreshInterval);
       }
-      
-      setBookingComplete(true);
-    } catch (error) {
-      setErrorMessage('Error booking appointment: ' + error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+  }, []);
 
-  // Group slots by date
+  // Group slots by date for display
   const groupSlotsByDate = () => {
     const grouped = {};
-    availableSlots.forEach(slot => {
+    availableSlots.forEach((slot) => {
       if (!grouped[slot.date]) {
         grouped[slot.date] = [];
       }
@@ -223,7 +91,112 @@ function ClientInterface() {
     return grouped;
   };
 
-  // Show loading state
+  // Helpers for displaying date info
+  const getDayOfWeek = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
+  const getFormattedDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  // Handle slot selection
+  const handleSelectSlot = (slot) => {
+    setSelectedSlot(slot);
+  };
+
+  // Optionally send emails from the client
+  const sendEmails = async () => {
+    const fullName = `${userInfo.firstName} ${userInfo.lastName}`;
+    const dayOfWeek = getDayOfWeek(selectedSlot.date);
+    const formattedDate = getFormattedDate(selectedSlot.date);
+    const standardTime = formatTimeToStandard(selectedSlot.time);
+
+    const date = new Date(selectedSlot.date);
+    const monthName = date.toLocaleDateString('en-US', { month: 'long' });
+    const day = date.getDate();
+
+    try {
+      // 1. Owner notification
+      await fetch(googleScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'owner',
+          slot_date: formattedDate,
+          slot_time: standardTime,
+          client_name: fullName,
+          client_email: userInfo.email,
+        }),
+      });
+
+      // 2. Scholarship email to client
+      await fetch(googleScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'scholarship',
+          first_name: userInfo.firstName,
+          to_email: userInfo.email,
+          day_of_week: dayOfWeek,
+          month: monthName,
+          day,
+          time: standardTime,
+        }),
+      });
+      console.log('Emails sent successfully');
+      return true;
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      return true;
+    }
+  };
+
+  // Handle booking: call your backend to mark the slot as booked
+  const handleBooking = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slotId: selectedSlot.id,
+          clientName: `${userInfo.firstName} ${userInfo.lastName}`,
+          clientEmail: userInfo.email,
+          zoomOption: userInfo.isScholarship ? 'Yes' : 'No',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to book appointment');
+      }
+
+      // Optionally send emails
+      await sendEmails();
+
+      // Clear refresh interval
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+
+      setBookingComplete(true);
+    } catch (error) {
+      setErrorMessage('Error booking appointment: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Loading screen
   if (isLoading && !bookingComplete) {
     return (
       <div className="container loading-container">
@@ -242,7 +215,11 @@ function ClientInterface() {
         <div className="confirmation-message">
           <div className="success-icon">
             <svg className="check-icon" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
             </svg>
           </div>
           <h2>Booking Confirmed!</h2>
@@ -250,15 +227,25 @@ function ClientInterface() {
           <p>Your appointment has been scheduled for:</p>
           <div className="appointment-details">
             <p>
-              <strong>{getDayOfWeek(selectedSlot.date)}</strong>, {new Date(selectedSlot.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              <strong>{getDayOfWeek(selectedSlot.date)}</strong>,{' '}
+              {new Date(selectedSlot.date).toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
             </p>
-            <p><strong>Time:</strong> {selectedSlot.time}</p>
+            <p>
+              <strong>Time:</strong> {formatTimeToStandard(selectedSlot.time)}
+            </p>
           </div>
           <p>A confirmation email has been sent to {userInfo.email}.</p>
           <p>Please check your inbox (and spam folder) for all the details.</p>
           {userInfo.isScholarship && (
             <div className="scholarship-note">
-              <p><strong>Note:</strong> As a scholarship applicant, you've received specific instructions for your interview at Sitzmann Hall.</p>
+              <p>
+                <strong>Note:</strong> As a scholarship applicant, you've received specific
+                instructions for your interview at Sitzmann Hall.
+              </p>
             </div>
           )}
         </div>
@@ -266,7 +253,7 @@ function ClientInterface() {
     );
   }
 
-  // Error message display
+  // Error screen
   if (errorMessage) {
     return (
       <div className="container error-container">
@@ -279,7 +266,7 @@ function ClientInterface() {
     );
   }
 
-  // No available slots message
+  // No available slots
   if (availableSlots.length === 0) {
     return (
       <div className="container no-slots-container">
@@ -296,28 +283,32 @@ function ClientInterface() {
   // Main booking interface
   return (
     <div className="container">
-      <div class="banner">
-          <img src="/CatholicStudiesPurple.png" alt="Guadalupe's Scholar Logo"/>
+      <div className="banner">
+        <img src="/CatholicStudiesPurple.png" alt="Guadalupe's Scholar Logo" />
       </div>
       <h1 className="page-title">Guadalupe's Scholars Interview</h1>
-      
+
       {!selectedSlot ? (
         <div className="slots-container">
           <p className="instructions">Select an available date and time below:</p>
-          
           {Object.entries(groupSlotsByDate()).map(([date, slots]) => (
             <div key={date} className="date-group">
               <h2 className="date-header">
-                <strong>{getDayOfWeek(date)}</strong>, {new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                <strong>{getDayOfWeek(date)}</strong>,{' '}
+                {new Date(date).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
               </h2>
               <div className="time-slots">
-                {slots.map(slot => (
+                {slots.map((slot) => (
                   <button
                     key={slot.id}
                     className="time-slot"
                     onClick={() => handleSelectSlot(slot)}
                   >
-                    {slot.time}
+                    {formatTimeToStandard(slot.time)}
                   </button>
                 ))}
               </div>
@@ -329,20 +320,23 @@ function ClientInterface() {
           <div className="selected-slot-info">
             <h3>Selected Appointment:</h3>
             <p>
-              <strong>{getDayOfWeek(selectedSlot.date)}</strong>, {new Date(selectedSlot.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              <strong>{getDayOfWeek(selectedSlot.date)}</strong>,{' '}
+              {new Date(selectedSlot.date).toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
             </p>
-            <p><strong>Time:</strong> {selectedSlot.time}</p>
-            <button 
-              className="change-slot-btn"
-              onClick={() => setSelectedSlot(null)}
-            >
+            <p>
+              <strong>Time:</strong> {formatTimeToStandard(selectedSlot.time)}
+            </p>
+            <button className="change-slot-btn" onClick={() => setSelectedSlot(null)}>
               Change Selection
             </button>
           </div>
-          
+
           <form className="booking-form" onSubmit={handleBooking}>
             <h3>Please Complete Your Booking</h3>
-            
             <div className="form-group">
               <label htmlFor="firstName">First Name</label>
               <input
@@ -350,10 +344,12 @@ function ClientInterface() {
                 id="firstName"
                 required
                 value={userInfo.firstName}
-                onChange={(e) => setUserInfo({...userInfo, firstName: e.target.value})}
+                onChange={(e) =>
+                  setUserInfo({ ...userInfo, firstName: e.target.value })
+                }
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="lastName">Last Name</label>
               <input
@@ -361,10 +357,12 @@ function ClientInterface() {
                 id="lastName"
                 required
                 value={userInfo.lastName}
-                onChange={(e) => setUserInfo({...userInfo, lastName: e.target.value})}
+                onChange={(e) =>
+                  setUserInfo({ ...userInfo, lastName: e.target.value })
+                }
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="email">Email Address</label>
               <input
@@ -372,20 +370,27 @@ function ClientInterface() {
                 id="email"
                 required
                 value={userInfo.email}
-                onChange={(e) => setUserInfo({...userInfo, email: e.target.value})}
+                onChange={(e) =>
+                  setUserInfo({ ...userInfo, email: e.target.value })
+                }
               />
             </div>
-            
+
             <div className="form-group checkbox-group">
               <input
                 type="checkbox"
                 id="isScholarship"
                 checked={userInfo.isScholarship}
-                onChange={(e) => setUserInfo({...userInfo, isScholarship: e.target.checked})}
+                onChange={(e) =>
+                  setUserInfo({ ...userInfo, isScholarship: e.target.checked })
+                }
               />
-              <label htmlFor="isScholarship">If you zoom option</label>
+              <label htmlFor="isScholarship">
+                Click here if you are a student more than 1 hour away from campus and
+                would like to do zoom option
+              </label>
             </div>
-            
+
             <button type="submit" className="book-btn">
               Confirm Booking
             </button>
